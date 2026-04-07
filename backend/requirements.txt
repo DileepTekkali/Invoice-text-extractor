@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+easyocr
+opencv-python
+opencv-python-headless
+pymupdf
+python-multipart
+numpy
+aiofiles
