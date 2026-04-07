@@ -7,3 +7,4 @@ pymupdf
 python-multipart
 numpy
 aiofiles
+requests

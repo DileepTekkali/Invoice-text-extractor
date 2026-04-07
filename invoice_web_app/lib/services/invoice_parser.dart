@@ -2,7 +2,215 @@ import 'package:invoice_web_app/models/invoice_data.dart';
 
 class InvoiceParser {
   static InvoiceData parse(String rawText, String filename) {
-    return parseWithStructuredData(rawText, filename, null);
+    return parseWithExtractedData(rawText, filename, null);
+  }
+
+  static InvoiceData parseWithExtractedData(
+    String rawText,
+    String filename,
+    Map<String, dynamic>? extractedData,
+  ) {
+    InvoiceData invoice = InvoiceData(rawText: rawText, filename: filename);
+
+    if (extractedData != null) {
+      invoice = _parseExtractedInvoice(extractedData, rawText, filename);
+    } else {
+      invoice.currencySymbol = _extractCurrencySymbol(rawText);
+      invoice.invoiceNumber = _extractInvoiceNumber(rawText);
+      invoice.date = _extractDate(rawText);
+      invoice.ownerName = _extractBusinessName(rawText);
+      invoice.ownerMobile = _extractMobile(rawText);
+      invoice.ownerAddress = _extractSellerAddress(rawText);
+      invoice.gstin = _extractGSTIN(rawText);
+      invoice.billToName = _extractBillToName(rawText);
+      invoice.billToMobile = _extractMobile(rawText);
+      invoice.billToAddress = '';
+
+      invoice.tables = _extractAllTables(rawText);
+
+      var extractedData = _extractItemsFromTables(invoice.tables);
+      invoice.items = extractedData['items'] as List<InvoiceItem>;
+      invoice.tableHeaders = extractedData['headers'] as List<String>;
+
+      invoice.subtotal = _extractSubtotal(rawText, invoice.currencySymbol);
+      invoice.gstPercentage = _extractGSTPercentage(rawText);
+      invoice.total = _extractTotal(rawText, invoice.currencySymbol);
+      invoice.authorizedSignature = _extractSignature(rawText);
+      invoice.extraFields = _extractExtraFields(rawText);
+    }
+
+    return invoice;
+  }
+
+  static InvoiceData _parseExtractedInvoice(
+    Map<String, dynamic> extractedData,
+    String rawText,
+    String filename,
+  ) {
+    InvoiceData invoice = InvoiceData(rawText: rawText, filename: filename);
+
+    invoice.invoiceNumber =
+        _getNestedValue(extractedData, ['invoice_details', 'invoice_number']) ??
+        '';
+    invoice.date =
+        _getNestedValue(extractedData, ['invoice_details', 'invoice_date']) ??
+        '';
+
+    String? dueDate = _getNestedValue(extractedData, [
+      'invoice_details',
+      'due_date',
+    ]);
+    if (dueDate != null && dueDate.isNotEmpty) {
+      invoice.extraFields['Due Date'] = dueDate;
+    }
+
+    String currency =
+        _getNestedValue(extractedData, ['invoice_details', 'currency']) ?? '';
+    invoice.currencySymbol = _resolveCurrencySymbol(currency, rawText);
+
+    invoice.ownerName =
+        _getNestedValue(extractedData, ['vendor_details', 'name']) ?? '';
+    invoice.ownerAddress =
+        _getNestedValue(extractedData, ['vendor_details', 'address']) ?? '';
+    invoice.ownerMobile =
+        _getNestedValue(extractedData, ['vendor_details', 'phone']) ?? '';
+    String? vendorEmail = _getNestedValue(extractedData, [
+      'vendor_details',
+      'email',
+    ]);
+    if (vendorEmail != null && vendorEmail.isNotEmpty) {
+      invoice.extraFields['Email'] = vendorEmail;
+    }
+
+    invoice.billToName =
+        _getNestedValue(extractedData, ['customer_details', 'name']) ?? '';
+    invoice.billToAddress =
+        _getNestedValue(extractedData, ['customer_details', 'address']) ?? '';
+    invoice.billToMobile =
+        _getNestedValue(extractedData, ['customer_details', 'phone']) ?? '';
+    String? customerEmail = _getNestedValue(extractedData, [
+      'customer_details',
+      'email',
+    ]);
+    if (customerEmail != null && customerEmail.isNotEmpty) {
+      invoice.extraFields['Bill To Email'] = customerEmail;
+    }
+
+    String? paymentMethod = _getNestedValue(extractedData, [
+      'payment_details',
+      'payment_method',
+    ]);
+    String? bankName = _getNestedValue(extractedData, [
+      'payment_details',
+      'bank_name',
+    ]);
+    String? accountNumber = _getNestedValue(extractedData, [
+      'payment_details',
+      'account_number',
+    ]);
+    String? accountName = _getNestedValue(extractedData, [
+      'payment_details',
+      'account_name',
+    ]);
+
+    if (paymentMethod != null)
+      invoice.extraFields['Payment Method'] = paymentMethod;
+    if (bankName != null) invoice.extraFields['Bank Name'] = bankName;
+    if (accountNumber != null)
+      invoice.extraFields['Account Number'] = accountNumber;
+    if (accountName != null) invoice.extraFields['Account Name'] = accountName;
+
+    invoice.subtotal = _getDoubleValue(extractedData, ['summary', 'subtotal']);
+    invoice.gstPercentage = _getDoubleValue(extractedData, ['summary', 'tax']);
+    invoice.total = _getDoubleValue(extractedData, ['summary', 'total']);
+
+    String? notes = _getNestedValue(extractedData, [
+      'additional_info',
+      'notes',
+    ]);
+    String? terms = _getNestedValue(extractedData, [
+      'additional_info',
+      'terms',
+    ]);
+    if (notes != null && notes.isNotEmpty) invoice.authorizedSignature = notes;
+    if (terms != null && terms.isNotEmpty) invoice.extraFields['Terms'] = terms;
+
+    List<dynamic>? lineItems = extractedData['line_items'] as List<dynamic>?;
+    if (lineItems != null && lineItems.isNotEmpty) {
+      invoice.items = lineItems.map<InvoiceItem>((item) {
+        return InvoiceItem(
+          description: _getNestedValue(item, ['description']) ?? '',
+          quantity: _getIntValue(item, ['quantity']),
+          rate: _getDoubleValue(item, ['unit_price']),
+          amount: _getDoubleValue(item, ['total']),
+        );
+      }).toList();
+
+      invoice.tableHeaders = ['#', 'Description', 'Qty', 'Unit Price', 'Total'];
+    }
+
+    return invoice;
+  }
+
+  static String? _getNestedValue(Map<String, dynamic> data, List<String> keys) {
+    dynamic current = data;
+    for (String key in keys) {
+      if (current is Map<String, dynamic>) {
+        current = current[key];
+      } else {
+        return null;
+      }
+    }
+    return current?.toString();
+  }
+
+  static double _getDoubleValue(Map<String, dynamic> data, List<String> keys) {
+    dynamic value = _getNestedValue(data, keys);
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      return double.tryParse(value.replaceAll(RegExp(r'[^\d.]'), '')) ?? 0.0;
+    }
+    return 0.0;
+  }
+
+  static int _getIntValue(Map<String, dynamic> data, List<String> keys) {
+    dynamic value = _getNestedValue(data, keys);
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) {
+      return int.tryParse(value.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+    }
+    return 0;
+  }
+
+  static String _mapCurrencyToSymbol(String currency) {
+    String upperCurrency = currency.toUpperCase();
+    if (upperCurrency.contains('USD') || upperCurrency.contains('\$'))
+      return '\$';
+    if (upperCurrency.contains('INR') ||
+        upperCurrency.contains('₹') ||
+        upperCurrency.contains('RS') ||
+        upperCurrency.contains('RUPEE'))
+      return '₹';
+    if (upperCurrency.contains('EUR') || upperCurrency.contains('€'))
+      return '€';
+    if (upperCurrency.contains('GBP') || upperCurrency.contains('£'))
+      return '£';
+    if (upperCurrency.contains('JPY') ||
+        upperCurrency.contains('CNY') ||
+        upperCurrency.contains('¥'))
+      return '¥';
+    return '';
+  }
+
+  static String _resolveCurrencySymbol(String currency, String rawText) {
+    final normalizedCurrency = _mapCurrencyToSymbol(currency);
+    if (normalizedCurrency.isNotEmpty) {
+      return normalizedCurrency;
+    }
+    return _extractCurrencySymbol(rawText);
   }
 
   static InvoiceData parseWithStructuredData(
@@ -75,27 +283,37 @@ class InvoiceParser {
   }
 
   static String _extractCurrencySymbol(String text) {
+    final upperText = text.toUpperCase();
     if (text.contains('\$') ||
-        text.contains('USD') ||
-        text.contains('Dollar')) {
+        upperText.contains('USD') ||
+        upperText.contains('DOLLAR')) {
       return '\$';
     }
     if (text.contains('₹') ||
-        text.contains('Rs') ||
-        text.contains('INR') ||
+        upperText.contains('INR') ||
+        upperText.contains('RUPEE') ||
+        upperText.contains('RUPEES') ||
+        RegExp(r'\bRS\.?\b', caseSensitive: false).hasMatch(text) ||
         _containsRupeePattern(text)) {
       return '₹';
     }
-    if (text.contains('€') || text.contains('Euro')) {
+    if (text.contains('€') ||
+        upperText.contains('EUR') ||
+        upperText.contains('EURO')) {
       return '€';
     }
-    if (text.contains('£') || text.contains('GBP')) {
+    if (text.contains('£') ||
+        upperText.contains('GBP') ||
+        upperText.contains('POUND')) {
       return '£';
     }
-    if (text.contains('¥') || text.contains('JPY') || text.contains('CNY')) {
+    if (text.contains('¥') ||
+        upperText.contains('JPY') ||
+        upperText.contains('CNY') ||
+        upperText.contains('YEN')) {
       return '¥';
     }
-    return '\$';
+    return '';
   }
 
   static bool _containsRupeePattern(String text) {
@@ -564,14 +782,14 @@ class InvoiceParser {
   }
 
   static bool _isNumeric(String str) {
-    String cleaned = str.replaceAll(RegExp(r'[$€£¥,\s]'), '');
+    String cleaned = str.replaceAll(RegExp(r'[₹$€£¥,\s]'), '');
     cleaned = cleaned.replaceAll(RegExp(r'[A-Za-z]'), '');
     return RegExp(r'^\d+\.?\d*$').hasMatch(cleaned);
   }
 
   static double _parseDouble(String value) {
     String cleaned = value
-        .replaceAll(RegExp(r'[$€£¥,\s]'), '')
+        .replaceAll(RegExp(r'[₹$€£¥,\s]'), '')
         .replaceAll(RegExp(r'[A-Za-z]'), '');
     return double.tryParse(cleaned) ?? 0.0;
   }
@@ -596,7 +814,7 @@ class InvoiceParser {
 
   static double _extractSubtotal(String text, String? currencySymbol) {
     var patterns = [
-      RegExp(r'Sub\s*Total[:\s]*\$?([\d,]+\.?\d*)', caseSensitive: false),
+      RegExp(r'Sub\s*Total[:\s]*[₹$€£¥]?([\d,]+\.?\d*)', caseSensitive: false),
       RegExp(r'Sub\s*Total[:\s]*([\d,]+\.?\d*)', caseSensitive: false),
     ];
 
@@ -611,7 +829,7 @@ class InvoiceParser {
 
   static double _extractGSTPercentage(String text) {
     var patterns = [
-      RegExp(r'Tax[:\s]*\$?([\d,]+\.?\d*)', caseSensitive: false),
+      RegExp(r'Tax[:\s]*[₹$€£¥]?([\d,]+\.?\d*)', caseSensitive: false),
       RegExp(r'(\d+(?:\.\d+)?)\s*%', caseSensitive: false),
     ];
 
@@ -628,9 +846,12 @@ class InvoiceParser {
 
   static double _extractTotal(String text, String? currencySymbol) {
     var patterns = [
-      RegExp(r'Total\s*Due[:\s]*\$?([\d,]+\.?\d*)', caseSensitive: false),
-      RegExp(r'Grand\s*Total[:\s]*\$?([\d,]+\.?\d*)', caseSensitive: false),
-      RegExp(r'Total[:\s]*\$?([\d,]+\.?\d*)', caseSensitive: false),
+      RegExp(r'Total\s*Due[:\s]*[₹$€£¥]?([\d,]+\.?\d*)', caseSensitive: false),
+      RegExp(
+        r'Grand\s*Total[:\s]*[₹$€£¥]?([\d,]+\.?\d*)',
+        caseSensitive: false,
+      ),
+      RegExp(r'Total[:\s]*[₹$€£¥]?([\d,]+\.?\d*)', caseSensitive: false),
     ];
 
     for (var pattern in patterns) {

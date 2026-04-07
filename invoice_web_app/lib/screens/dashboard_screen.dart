@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import '../models/invoice_data.dart';
-import '../services/api_service.dart';
-import '../services/invoice_parser.dart';
+import 'main_dashboard.dart';
 
 class DashboardScreen extends StatefulWidget {
   final InvoiceData invoice;
@@ -48,8 +46,26 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   String _formatCurrency(double amount) {
-    final formatter = NumberFormat.currency(symbol: '₹', decimalDigits: 2);
+    final formatter = NumberFormat.currency(
+      symbol: widget.invoice.currencySymbol ?? '',
+      decimalDigits: 2,
+    );
     return formatter.format(amount);
+  }
+
+  String _formatPercentage(double value) {
+    if (value == value.truncateToDouble()) {
+      return value.toStringAsFixed(0);
+    }
+    return value.toStringAsFixed(2);
+  }
+
+  void _openMainDashboard({bool openUploadOnStart = false}) {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => MainDashboard(openUploadOnStart: openUploadOnStart),
+      ),
+    );
   }
 
   @override
@@ -61,11 +77,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const UploadScreenWrapper()),
-            );
-          },
+          onPressed: _openMainDashboard,
         ),
         title: Row(
           children: [
@@ -97,107 +109,152 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _buildReviewView() {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(20),
-          color: Colors.white,
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.invoice.invoiceNumber.isNotEmpty
-                          ? widget.invoice.invoiceNumber
-                          : 'Invoice',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isSmallScreen = constraints.maxWidth < 720;
+
+        return Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              color: Colors.white,
+              child: isSmallScreen
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.invoice.invoiceNumber.isNotEmpty
+                              ? widget.invoice.invoiceNumber
+                              : 'Invoice',
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'File: ${widget.invoice.filename}',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                _openMainDashboard(openUploadOnStart: true),
+                            icon: const Icon(Icons.add),
+                            label: const Text('New Invoice'),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.invoice.invoiceNumber.isNotEmpty
+                                    ? widget.invoice.invoiceNumber
+                                    : 'Invoice',
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'File: ${widget.invoice.filename}',
+                                style: TextStyle(color: Colors.grey[600]),
+                              ),
+                            ],
+                          ),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () =>
+                              _openMainDashboard(openUploadOnStart: true),
+                          icon: const Icon(Icons.add),
+                          label: const Text('New Invoice'),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'File: ${widget.invoice.filename}',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
-                  ],
-                ),
+            ),
+            Container(
+              color: Colors.white,
+              child: TabBar(
+                controller: _tabController,
+                isScrollable: isSmallScreen,
+                labelColor: const Color(0xFF667eea),
+                unselectedLabelColor: Colors.grey,
+                indicatorColor: const Color(0xFF667eea),
+                indicatorSize: TabBarIndicatorSize.tab,
+                tabs: const [
+                  Tab(text: 'Overview', icon: Icon(Icons.info_outline)),
+                  Tab(text: 'Items', icon: Icon(Icons.list_alt)),
+                  Tab(text: 'Raw Data', icon: Icon(Icons.code)),
+                ],
               ),
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(
-                      builder: (_) => const UploadScreenWrapper(),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('New Invoice'),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildOverviewTab(),
+                  _buildItemsTab(),
+                  _buildRawDataTab(),
+                ],
               ),
-            ],
-          ),
-        ),
-        Container(
-          color: Colors.white,
-          child: TabBar(
-            controller: _tabController,
-            labelColor: const Color(0xFF667eea),
-            unselectedLabelColor: Colors.grey,
-            indicatorColor: const Color(0xFF667eea),
-            indicatorSize: TabBarIndicatorSize.tab,
-            tabs: const [
-              Tab(text: 'Overview', icon: Icon(Icons.info_outline)),
-              Tab(text: 'Items', icon: Icon(Icons.list_alt)),
-              Tab(text: 'Raw Data', icon: Icon(Icons.code)),
-            ],
-          ),
-        ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              _buildOverviewTab(),
-              _buildItemsTab(),
-              _buildRawDataTab(),
-            ],
-          ),
-        ),
-        _buildActionButtons(),
-      ],
+            ),
+            _buildActionButtons(),
+          ],
+        );
+      },
     );
   }
 
   Widget _buildOverviewTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isSmallScreen = constraints.maxWidth < 720;
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
             children: [
-              Expanded(child: _buildSellerCard()),
-              const SizedBox(width: 16),
-              Expanded(child: _buildBuyerCard()),
+              if (isSmallScreen) ...[
+                _buildSellerCard(),
+                const SizedBox(height: 16),
+                _buildBuyerCard(),
+              ] else ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _buildSellerCard()),
+                    const SizedBox(width: 16),
+                    Expanded(child: _buildBuyerCard()),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 16),
+              _buildFinancialSummary(),
+              const SizedBox(height: 16),
+              if (_showMoreDetails) _buildAdditionalDetails(),
+              Center(
+                child: TextButton.icon(
+                  onPressed: () =>
+                      setState(() => _showMoreDetails = !_showMoreDetails),
+                  icon: Icon(
+                    _showMoreDetails ? Icons.expand_less : Icons.expand_more,
+                  ),
+                  label: Text(
+                    _showMoreDetails ? 'Show Less' : 'View More Details',
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 16),
-          _buildFinancialSummary(),
-          const SizedBox(height: 16),
-          if (_showMoreDetails) _buildAdditionalDetails(),
-          Center(
-            child: TextButton.icon(
-              onPressed: () =>
-                  setState(() => _showMoreDetails = !_showMoreDetails),
-              icon: Icon(
-                _showMoreDetails ? Icons.expand_less : Icons.expand_more,
-              ),
-              label: Text(_showMoreDetails ? 'Show Less' : 'View More Details'),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -259,7 +316,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withAlpha(13),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -289,29 +346,58 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 420;
+
+        if (isNarrow) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 120,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
-            ),
+              Expanded(
+                child: Text(
+                  value,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -323,7 +409,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withAlpha(13),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -347,11 +433,15 @@ class _DashboardScreenState extends State<DashboardScreen>
             'Subtotal',
             _formatCurrency(widget.invoice.subtotal),
           ),
-          const Divider(),
-          _buildSummaryRow(
-            'GST (${18}%)',
-            _formatCurrency(widget.invoice.subtotal * 18 / 100),
-          ),
+          if (widget.invoice.gstPercentage > 0) ...[
+            const Divider(),
+            _buildSummaryRow(
+              'GST (${_formatPercentage(widget.invoice.gstPercentage)}%)',
+              _formatCurrency(
+                widget.invoice.subtotal * widget.invoice.gstPercentage / 100,
+              ),
+            ),
+          ],
           const Divider(),
           _buildSummaryRow(
             'Total Amount',
@@ -398,7 +488,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withAlpha(13),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -449,71 +539,125 @@ class _DashboardScreenState extends State<DashboardScreen>
       );
     }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: DataTable(
-            headingRowColor: WidgetStatePropertyAll<Color>(
-              const Color(0xFF667eea).withAlpha(26),
-            ),
-            columns: const [
-              DataColumn(
-                label: Text('#', style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-              DataColumn(
-                label: Text(
-                  'Description',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isSmallScreen = constraints.maxWidth < 720;
+
+        if (isSmallScreen) {
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: widget.invoice.items.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final item = widget.invoice.items[index];
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(13),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-              ),
-              DataColumn(
-                label: Text(
-                  'Qty',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Item ${index + 1}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF667eea),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildInfoRow('Description', item.description),
+                    _buildInfoRow('Qty', '${item.quantity}'),
+                    _buildInfoRow('Rate', _formatCurrency(item.rate)),
+                    _buildInfoRow('Amount', _formatCurrency(item.amount)),
+                  ],
                 ),
-              ),
-              DataColumn(
-                label: Text(
-                  'Rate',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              DataColumn(
-                label: Text(
-                  'Amount',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-            rows: widget.invoice.items.asMap().entries.map((entry) {
-              final index = entry.key;
-              final item = entry.value;
-              return DataRow(
-                cells: [
-                  DataCell(Text('${index + 1}')),
-                  DataCell(Text(item.description)),
-                  DataCell(Text('${item.quantity}')),
-                  DataCell(Text(_formatCurrency(item.rate))),
-                  DataCell(Text(_formatCurrency(item.amount))),
-                ],
               );
-            }).toList(),
+            },
+          );
+        }
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(13),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  headingRowColor: WidgetStatePropertyAll<Color>(
+                    const Color(0xFF667eea).withAlpha(26),
+                  ),
+                  columns: const [
+                    DataColumn(
+                      label: Text(
+                        '#',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Description',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Qty',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Rate',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Amount',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                  rows: widget.invoice.items.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final item = entry.value;
+                    return DataRow(
+                      cells: [
+                        DataCell(Text('${index + 1}')),
+                        DataCell(Text(item.description)),
+                        DataCell(Text('${item.quantity}')),
+                        DataCell(Text(_formatCurrency(item.rate))),
+                        DataCell(Text(_formatCurrency(item.amount))),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -544,22 +688,19 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Container(
       padding: const EdgeInsets.all(20),
       color: Colors.white,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
+      child: Wrap(
+        alignment: WrapAlignment.end,
+        spacing: 12,
+        runSpacing: 12,
         children: [
           OutlinedButton.icon(
-            onPressed: () {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const UploadScreenWrapper()),
-              );
-            },
+            onPressed: () => _openMainDashboard(openUploadOnStart: true),
             icon: const Icon(Icons.refresh),
             label: const Text('Upload New'),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
           ),
-          const SizedBox(width: 16),
           ElevatedButton.icon(
             onPressed: _handleSubmit,
             icon: const Icon(Icons.check),
@@ -611,13 +752,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                   _buildSubmittedTable(),
                   const SizedBox(height: 32),
                   ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(
-                          builder: (_) => const UploadScreenWrapper(),
-                        ),
-                      );
-                    },
+                    onPressed: () =>
+                        _openMainDashboard(openUploadOnStart: true),
                     icon: const Icon(Icons.add),
                     label: const Text('Process Another Invoice'),
                     style: ElevatedButton.styleFrom(
@@ -685,10 +821,13 @@ class _DashboardScreenState extends State<DashboardScreen>
           _buildTableRow('Customer', widget.invoice.billToName),
           _buildTableRow('Items Count', '${widget.invoice.items.length}'),
           _buildTableRow('Subtotal', _formatCurrency(widget.invoice.subtotal)),
-          _buildTableRow(
-            'GST (18%)',
-            _formatCurrency(widget.invoice.subtotal * 18 / 100),
-          ),
+          if (widget.invoice.gstPercentage > 0)
+            _buildTableRow(
+              'GST (${_formatPercentage(widget.invoice.gstPercentage)}%)',
+              _formatCurrency(
+                widget.invoice.subtotal * widget.invoice.gstPercentage / 100,
+              ),
+            ),
           _buildTableRow(
             'Total',
             _formatCurrency(widget.invoice.total),
@@ -707,7 +846,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
       decoration: BoxDecoration(
-        color: isHighlighted ? const Color(0xFF667eea).withOpacity(0.1) : null,
+        color: isHighlighted ? const Color(0xFF667eea).withAlpha(26) : null,
         border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
       ),
       child: Row(
@@ -732,244 +871,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class UploadScreenWrapper extends StatelessWidget {
-  const UploadScreenWrapper({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const UploadScreenMain();
-  }
-}
-
-class UploadScreenMain extends StatefulWidget {
-  const UploadScreenMain({super.key});
-
-  @override
-  State<UploadScreenMain> createState() => _UploadScreenMainState();
-}
-
-class _UploadScreenMainState extends State<UploadScreenMain> {
-  bool loading = false;
-  String? selectedFileName;
-  String? errorMessage;
-
-  Future<void> pickAndUpload() async {
-    FilePickerResult? picked = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-      withData: true,
-    );
-
-    if (picked != null && picked.files.isNotEmpty) {
-      setState(() {
-        loading = true;
-        errorMessage = null;
-        selectedFileName = picked.files.first.name;
-      });
-
-      try {
-        PlatformFile file = picked.files.first;
-        ApiResponse apiResponse = await ApiService.uploadFile(
-          file.bytes!,
-          file.name,
-        );
-
-        InvoiceData invoice = InvoiceParser.parseWithStructuredData(
-          apiResponse.text,
-          file.name,
-          apiResponse.structuredData,
-        );
-
-        if (mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (_) => DashboardScreen(invoice: invoice),
-            ),
-          );
-        }
-      } catch (e) {
-        setState(() {
-          errorMessage = e.toString();
-          loading = false;
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF667eea), Color(0xFF764ba2)],
-          ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: _buildUploadCard(),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildUploadCard() {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 500),
-      child: Card(
-        elevation: 8,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF667eea).withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.document_scanner_outlined,
-                  size: 64,
-                  color: Color(0xFF667eea),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Invoice Scanner',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Upload your invoice to extract data',
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 32),
-              if (loading) ...[
-                const CircularProgressIndicator(color: Color(0xFF667eea)),
-                const SizedBox(height: 16),
-                Text(
-                  'Processing ${selectedFileName ?? "file"}...',
-                  style: TextStyle(color: Colors.grey[600]),
-                ),
-              ] else if (errorMessage != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.red[50],
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.error_outline, color: Colors.red[700]),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          errorMessage!,
-                          style: TextStyle(color: Colors.red[700]),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: pickAndUpload,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Try Again'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF667eea),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 16,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ] else ...[
-                GestureDetector(
-                  onTap: pickAndUpload,
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(32),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Colors.grey[300]!,
-                        width: 2,
-                        style: BorderStyle.solid,
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      color: Colors.grey[50],
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.cloud_upload_outlined,
-                          size: 48,
-                          color: Colors.grey[400],
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Click to upload',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey[700],
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'PDF, PNG, JPG (max 10MB)',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[500],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: pickAndUpload,
-                    icon: const Icon(Icons.attach_file),
-                    label: const Text('Select Invoice File'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF667eea),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
       ),
     );
   }

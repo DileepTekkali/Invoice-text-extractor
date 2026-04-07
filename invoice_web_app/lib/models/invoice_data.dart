@@ -33,8 +33,8 @@ class InvoiceData {
     this.billToName = '',
     this.billToMobile = '',
     this.billToAddress = '',
-    this.items = const [],
-    this.tableHeaders = const [],
+    List<InvoiceItem>? items,
+    List<String>? tableHeaders,
     this.subtotal = 0.0,
     this.gstPercentage = 0.0,
     this.total = 0.0,
@@ -43,9 +43,12 @@ class InvoiceData {
     this.rawText = '',
     this.filename = '',
     this.submittedAt = '',
-    this.extraFields = const {},
-    this.tables = const [],
-  });
+    Map<String, String>? extraFields,
+    List<InvoiceTable>? tables,
+  }) : items = items ?? [],
+       tableHeaders = tableHeaders ?? [],
+       extraFields = extraFields ?? {},
+       tables = tables ?? [];
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -104,9 +107,10 @@ class InvoiceTable {
 
   InvoiceTable({
     this.title = '',
-    this.headers = const [],
-    this.rows = const [],
-  });
+    List<String>? headers,
+    List<List<String>>? rows,
+  }) : headers = headers ?? [],
+       rows = rows ?? [];
 
   Map<String, dynamic> toJson() => {
     'title': title,

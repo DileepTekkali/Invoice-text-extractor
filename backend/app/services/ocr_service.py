@@ -29,16 +29,46 @@ def process_file(file_bytes, filename):
     return f"NON_INVOICE:{ocr_text}"
 
 def is_invoice(text):
-    invoice_keywords = [
-        'invoice', 'bill', 'receipt', 'tax invoice', 'sales invoice',
-        'purchase', 'order', 'amount due', 'total', 'subtotal',
-        'bill to', 'ship to', 'sold by', 'invoice number', 'inv#',
-        'invoice date', 'due date', 'gstin', 'tax', 'payment'
-    ]
-    
+    if not text or len(text.strip()) < 20:
+        return False
+
     text_lower = text.lower()
-    matches = sum(1 for kw in invoice_keywords if kw in text_lower)
-    return matches >= 2
+    primary_keywords = [
+        'invoice',
+        'tax invoice',
+        'sales invoice',
+        'invoice number',
+        'invoice no',
+        'invoice #',
+        'bill to',
+        'amount due',
+        'due date',
+    ]
+    secondary_keywords = [
+        'subtotal',
+        'total',
+        'tax',
+        'payment',
+        'gstin',
+        'customer',
+        'vendor',
+        'seller',
+        'sold by',
+        'ship to',
+    ]
+
+    primary_matches = sum(1 for kw in primary_keywords if kw in text_lower)
+    secondary_matches = sum(1 for kw in secondary_keywords if kw in text_lower)
+    has_amount_pattern = bool(
+        re.search(
+            r'(total|amount due|subtotal)\s*[:\-]?\s*[₹$€£¥]?\s*[\d,]+(?:\.\d{1,2})?',
+            text_lower,
+        )
+    )
+
+    return primary_matches >= 2 or (
+        primary_matches >= 1 and (secondary_matches >= 1 or has_amount_pattern)
+    )
 
 def clean_text_with_structure(text):
     lines = text.split('\n')
@@ -48,7 +78,6 @@ def clean_text_with_structure(text):
         line = line.strip()
         if line:
             line = re.sub(r'\s+', ' ', line)
-            line = re.sub(r'[^\x00-\x7F]+', '', line)
             cleaned_lines.append(line)
     
     return '\n'.join(cleaned_lines)
