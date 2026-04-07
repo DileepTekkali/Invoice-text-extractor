@@ -732,14 +732,21 @@ class _UploadProgressDialogState extends State<UploadProgressDialog> {
     try {
       setState(() => _status = 'Processing ${widget.file.name}...');
 
-      String rawText = await ApiService.uploadFile(
+      ApiResponse apiResponse = await ApiService.uploadFile(
         widget.file.bytes!,
         widget.file.name,
       );
 
+      String rawText = apiResponse.text;
+      Map<String, dynamic>? structuredData = apiResponse.structuredData;
+
       setState(() => _status = 'Parsing invoice data...');
 
-      _parsedInvoice = InvoiceParser.parse(rawText, widget.file.name);
+      _parsedInvoice = InvoiceParser.parseWithStructuredData(
+        rawText,
+        widget.file.name,
+        structuredData,
+      );
       _parsedInvoice!.id = DateTime.now().millisecondsSinceEpoch.toString();
       _parsedInvoice!.submittedAt = DateTime.now().toIso8601String();
 

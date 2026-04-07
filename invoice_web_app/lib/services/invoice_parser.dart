@@ -2,6 +2,14 @@ import 'package:invoice_web_app/models/invoice_data.dart';
 
 class InvoiceParser {
   static InvoiceData parse(String rawText, String filename) {
+    return parseWithStructuredData(rawText, filename, null);
+  }
+
+  static InvoiceData parseWithStructuredData(
+    String rawText,
+    String filename,
+    Map<String, dynamic>? structuredData,
+  ) {
     InvoiceData invoice = InvoiceData(rawText: rawText, filename: filename);
 
     invoice.currencySymbol = _extractCurrencySymbol(rawText);
@@ -15,7 +23,11 @@ class InvoiceParser {
     invoice.billToMobile = _extractMobile(rawText);
     invoice.billToAddress = '';
 
-    invoice.tables = _extractAllTables(rawText);
+    if (structuredData != null && structuredData['tables'] != null) {
+      invoice.tables = _parseStructuredTables(structuredData['tables']);
+    } else {
+      invoice.tables = _extractAllTables(rawText);
+    }
 
     var extractedData = _extractItemsFromTables(invoice.tables);
     invoice.items = extractedData['items'] as List<InvoiceItem>;
@@ -28,6 +40,38 @@ class InvoiceParser {
     invoice.extraFields = _extractExtraFields(rawText);
 
     return invoice;
+  }
+
+  static List<InvoiceTable> _parseStructuredTables(List<dynamic> tablesData) {
+    List<InvoiceTable> tables = [];
+
+    for (var tableData in tablesData) {
+      if (tableData is Map<String, dynamic>) {
+        String title = tableData['table_index'] != null
+            ? 'Table ${tableData['table_index']}'
+            : 'Data Table';
+
+        List<String> headers = [];
+        if (tableData['headers'] is List) {
+          headers = (tableData['headers'] as List)
+              .map((h) => h.toString())
+              .toList();
+        }
+
+        List<List<String>> rows = [];
+        if (tableData['rows'] is List) {
+          for (var row in tableData['rows'] as List) {
+            if (row is List) {
+              rows.add(row.map((cell) => cell.toString()).toList());
+            }
+          }
+        }
+
+        tables.add(InvoiceTable(title: title, headers: headers, rows: rows));
+      }
+    }
+
+    return tables;
   }
 
   static String _extractCurrencySymbol(String text) {

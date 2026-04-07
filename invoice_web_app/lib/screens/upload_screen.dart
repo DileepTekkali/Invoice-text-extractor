@@ -34,9 +34,16 @@ class _UploadScreenState extends State<UploadScreen> {
 
       try {
         PlatformFile file = picked.files.first;
-        String rawText = await ApiService.uploadFile(file.bytes!, file.name);
+        ApiResponse apiResponse = await ApiService.uploadFile(
+          file.bytes!,
+          file.name,
+        );
 
-        InvoiceData invoice = InvoiceParser.parse(rawText, file.name);
+        InvoiceData invoice = InvoiceParser.parseWithStructuredData(
+          apiResponse.text,
+          file.name,
+          apiResponse.structuredData,
+        );
 
         setState(() {
           parsedInvoice = invoice;
