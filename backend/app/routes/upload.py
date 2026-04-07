@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Response
 from app.services.gemini_service import gemini_service
 
 router = APIRouter()
@@ -86,7 +86,12 @@ async def upload_invoice(file: UploadFile = File(...)):
         print(f"Error: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Processing error: {type(e).__name__}: {str(e)}")
+    raise HTTPException(status_code=500, detail=f"Processing error: {type(e).__name__}: {str(e)}")
+
+
+@router.options("/upload")
+async def upload_preflight():
+    return Response(status_code=204)
 
 def convert_ocr_to_invoice_data(ocr_text: str) -> dict:
     return {
