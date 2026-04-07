@@ -1,3 +1,4 @@
+import logging
 import os
 
 from fastapi import FastAPI
@@ -6,20 +7,28 @@ from app.routes.upload import router as upload_router
 
 app = FastAPI()
 
+DEFAULT_FRONTEND_ORIGINS = [
+    "https://invoice-text-extractor.web.app",
+    "https://invoice-text-extractor.firebaseapp.com",
+]
+
 
 def _get_allowed_origins() -> tuple[list[str], bool]:
     raw_origins = os.environ.get("FRONTEND_ORIGINS", "").strip()
-    if not raw_origins:
-        return ["*"], False
-
     origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
     if not origins:
-        return ["*"], False
+        origins = DEFAULT_FRONTEND_ORIGINS
 
-    return origins, True
+    allow_credentials = bool(origins and origins != ["*"])
+    return origins, allow_credentials
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 allowed_origins, allow_credentials = _get_allowed_origins()
+logger.info("CORS allow_origins=%s allow_credentials=%s", allowed_origins, allow_credentials)
 
 app.add_middleware(
     CORSMiddleware,
