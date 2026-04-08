@@ -758,19 +758,22 @@ class _UploadProgressDialogState extends State<UploadProgressDialog> {
 
       String rawText = apiResponse.text;
       Map<String, dynamic>? structuredData = apiResponse.structuredData;
+      String? errorMsg = apiResponse.error;
+
+      if (apiResponse.invoice == null || apiResponse.invoiceId == null) {
+        if (errorMsg != null && errorMsg.isNotEmpty) {
+          widget.onError(errorMsg);
+        } else {
+          widget.onError(
+            "Failed to process invoice. Please upload a clear invoice document.",
+          );
+        }
+        return;
+      }
 
       setState(() => _status = 'Parsing invoice data...');
 
-      if (apiResponse.invoice != null) {
-        _parsedInvoice = InvoiceData.fromJson(apiResponse.invoice!);
-      } else {
-        _parsedInvoice = InvoiceParser.parseWithStructuredData(
-          rawText,
-          widget.file.name,
-          structuredData,
-        );
-        _parsedInvoice!.submittedAt = DateTime.now().toIso8601String();
-      }
+      _parsedInvoice = InvoiceData.fromJson(apiResponse.invoice!);
 
       setState(() {
         _isProcessing = false;

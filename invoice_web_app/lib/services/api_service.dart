@@ -9,6 +9,7 @@ class ApiResponse {
   final String? extractionMethod;
   final String? invoiceId;
   final Map<String, dynamic>? invoice;
+  final String? error;
 
   ApiResponse({
     required this.text,
@@ -18,6 +19,7 @@ class ApiResponse {
     this.extractionMethod,
     this.invoiceId,
     this.invoice,
+    this.error,
   });
 
   factory ApiResponse.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,7 @@ class ApiResponse {
       extractionMethod: json["extraction_method"],
       invoiceId: json["invoice_id"],
       invoice: json["invoice"],
+      error: json["error"],
     );
   }
 }
@@ -59,7 +62,7 @@ class InvoiceStats {
 class ApiService {
   static const String baseUrl =
       "https://invoice-text-extractor-e3q8.onrender.com";
-      // "http://localhost:8000";
+  // "http://localhost:8000";
 
   static Future<ApiResponse> uploadFile(
     List<int> bytes,
