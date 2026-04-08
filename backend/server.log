@@ -1,9 +1,8 @@
 INFO:     Will watch for changes in these directories: ['/Users/tekkalidileep/MTouch_clone/Invoice-text-extractor/backend']
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [32088] using StatReload
-INFO:     Started server process [32090]
+INFO:     Started reloader process [36708] using StatReload
+INFO:     Started server process [36710]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     127.0.0.1:59673 - "GET /health HTTP/1.1" 200 OK
-Processing file: invoice-luxury.png, size: 110801 bytes
-INFO:     127.0.0.1:60270 - "POST /upload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58275 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58325 - "GET /invoices HTTP/1.1" 200 OK

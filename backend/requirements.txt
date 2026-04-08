@@ -4,3 +4,5 @@ pymupdf
 groq
 python-multipart
 httpx
+pymongo
+python-dotenv

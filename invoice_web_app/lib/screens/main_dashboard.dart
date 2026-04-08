@@ -30,15 +30,35 @@ class _MainDashboardState extends State<MainDashboard> {
   Future<void> _loadInvoices() async {
     setState(() => _isLoading = true);
 
-    await StorageService.init();
-    List<InvoiceData> invoices = await StorageService.getInvoices();
+    try {
+      final response = await ApiService.getInvoices(
+        search: _searchQuery.isNotEmpty ? _searchQuery : null,
+      );
+      final List<dynamic> invoicesList = response['invoices'] ?? [];
+      List<InvoiceData> invoices = invoicesList
+          .map((json) => InvoiceData.fromJson(json))
+          .toList();
 
-    setState(() {
-      _invoices = invoices;
-      _filteredInvoices = invoices;
-      _isLoading = false;
-      _applySortAndFilter();
-    });
+      setState(() {
+        _invoices = invoices;
+        _filteredInvoices = invoices;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _invoices = [];
+        _filteredInvoices = [];
+        _isLoading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading invoices: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _applySortAndFilter() {
@@ -114,7 +134,6 @@ class _MainDashboardState extends State<MainDashboard> {
       builder: (dialogContext) => UploadProgressDialog(
         file: file,
         onComplete: (invoice) async {
-          await StorageService.saveInvoice(invoice);
           await _loadInvoices();
           if (mounted) {
             Navigator.of(dialogContext).pop();
@@ -313,7 +332,7 @@ class _MainDashboardState extends State<MainDashboard> {
           ),
           ElevatedButton(
             onPressed: () async {
-              await StorageService.deleteInvoice(invoice.id);
+              await ApiService.deleteInvoice(invoice.id);
               await _loadInvoices();
               if (mounted) {
                 Navigator.pop(context);
@@ -742,13 +761,16 @@ class _UploadProgressDialogState extends State<UploadProgressDialog> {
 
       setState(() => _status = 'Parsing invoice data...');
 
-      _parsedInvoice = InvoiceParser.parseWithStructuredData(
-        rawText,
-        widget.file.name,
-        structuredData,
-      );
-      _parsedInvoice!.id = DateTime.now().millisecondsSinceEpoch.toString();
-      _parsedInvoice!.submittedAt = DateTime.now().toIso8601String();
+      if (apiResponse.invoice != null) {
+        _parsedInvoice = InvoiceData.fromJson(apiResponse.invoice!);
+      } else {
+        _parsedInvoice = InvoiceParser.parseWithStructuredData(
+          rawText,
+          widget.file.name,
+          structuredData,
+        );
+        _parsedInvoice!.submittedAt = DateTime.now().toIso8601String();
+      }
 
       setState(() {
         _isProcessing = false;
@@ -960,23 +982,12 @@ class InvoiceDetailsDialog extends StatelessWidget {
                           const SizedBox(height: 16),
                           _buildCustomerInfo(),
                         ],
-                        if (invoice.extraFields.isNotEmpty) ...[
+                        if (invoice.extraFields.isNotEmpty ||
+                            invoice.additionalDetails.isNotEmpty) ...[
                           const SizedBox(height: 16),
                           _buildSection(
                             'Additional Information',
-                            invoice.extraFields.entries
-                                .where(
-                                  (e) => ![
-                                    'Due Date',
-                                    'Payment Terms',
-                                    'Email',
-                                    'Phone',
-                                    'PO Number',
-                                    'Order Number',
-                                  ].contains(e.key),
-                                )
-                                .map((e) => _buildRow(e.key, e.value))
-                                .toList(),
+                            _buildDynamicFields(),
                           ),
                         ],
                         const SizedBox(height: 16),
@@ -1071,23 +1082,128 @@ class InvoiceDetailsDialog extends StatelessWidget {
   }
 
   Widget _buildCompanyInfo() {
-    return _buildSection('From (Seller)', [
-      _buildRow('Business Name', invoice.ownerName),
-      _buildRow('Address', invoice.ownerAddress),
-      _buildRow('Phone', invoice.ownerMobile),
-      _buildRow('Email', invoice.extraFields['Email'] ?? '-'),
-      _buildRow('GSTIN', invoice.gstin),
-    ]);
+    List<Widget> rows = [];
+
+    final seller = invoice.seller;
+    if (seller.isNotEmpty) {
+      seller.forEach((key, value) {
+        if (value != null && value.toString().isNotEmpty) {
+          String displayKey = key
+              .replaceAll('_', ' ')
+              .split(' ')
+              .map((word) {
+                if (word.isEmpty) return word;
+                return word[0].toUpperCase() + word.substring(1);
+              })
+              .join(' ');
+          rows.add(_buildRow(displayKey, value.toString()));
+        }
+      });
+    }
+
+    if (rows.isEmpty) {
+      rows.add(_buildRow('Business Name', invoice.ownerName));
+      rows.add(_buildRow('Address', invoice.ownerAddress));
+      rows.add(_buildRow('Phone', invoice.ownerMobile));
+      rows.add(_buildRow('GSTIN', invoice.gstin));
+    }
+
+    return _buildSection('From (Seller)', rows);
   }
 
   Widget _buildCustomerInfo() {
-    return _buildSection('Bill To (Customer)', [
-      _buildRow('Customer Name', invoice.billToName),
-      _buildRow('Address', invoice.billToAddress),
-      _buildRow('Phone', invoice.billToMobile),
-      _buildRow('Email', invoice.extraFields['Bill To Email'] ?? '-'),
-      _buildRow('PO Number', invoice.extraFields['PO Number'] ?? '-'),
-    ]);
+    List<Widget> rows = [];
+
+    final customer = invoice.customer;
+    if (customer.isNotEmpty) {
+      customer.forEach((key, value) {
+        if (value != null && value.toString().isNotEmpty) {
+          String displayKey = key
+              .replaceAll('_', ' ')
+              .split(' ')
+              .map((word) {
+                if (word.isEmpty) return word;
+                return word[0].toUpperCase() + word.substring(1);
+              })
+              .join(' ');
+          rows.add(_buildRow(displayKey, value.toString()));
+        }
+      });
+    }
+
+    if (rows.isEmpty) {
+      rows.add(_buildRow('Customer Name', invoice.billToName));
+      rows.add(_buildRow('Address', invoice.billToAddress));
+      rows.add(_buildRow('Phone', invoice.billToMobile));
+    }
+
+    return _buildSection('Bill To (Customer)', rows);
+  }
+
+  List<Widget> _buildDynamicFields() {
+    List<Widget> rows = [];
+
+    final excludedKeys = [
+      'due_date',
+      'due Date',
+      'payment_terms',
+      'payment Terms',
+      'email',
+      'Email',
+      'phone',
+      'phone_number',
+      'phone Number',
+      'po_number',
+      'po Number',
+      'order_number',
+      'order Number',
+    ];
+
+    final addExcludedKeys = [
+      'notes',
+      'terms_and_conditions',
+      'terms and conditions',
+    ];
+
+    if (invoice.additionalDetails.isNotEmpty) {
+      invoice.additionalDetails.forEach((key, value) {
+        if (value != null && value.toString().isNotEmpty) {
+          String displayKey = key
+              .replaceAll('_', ' ')
+              .split(' ')
+              .map((word) {
+                if (word.isEmpty) return word;
+                return word[0].toUpperCase() + word.substring(1);
+              })
+              .join(' ');
+          rows.add(_buildRow(displayKey, value.toString()));
+        }
+      });
+    }
+
+    if (invoice.extraFields.isNotEmpty) {
+      invoice.extraFields.forEach((key, value) {
+        if (value != null && value.toString().isNotEmpty) {
+          String lowerKey = key.toLowerCase().replaceAll('_', ' ');
+          bool shouldExclude = excludedKeys.any(
+            (excluded) => lowerKey.contains(excluded.toLowerCase()),
+          );
+          if (!shouldExclude) {
+            String displayKey = key
+                .replaceAll('_', ' ')
+                .split(' ')
+                .map((word) {
+                  if (word.isEmpty) return word;
+                  return word[0].toUpperCase() + word.substring(1);
+                })
+                .join(' ');
+            rows.add(_buildRow(displayKey, value.toString()));
+          }
+        }
+      });
+    }
+
+    return rows;
   }
 
   Widget _buildItemsSection(bool isWide) {
