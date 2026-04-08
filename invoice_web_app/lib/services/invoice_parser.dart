@@ -12,14 +12,21 @@ class InvoiceParser {
   ) {
     InvoiceData invoice = InvoiceData(rawText: rawText, filename: filename);
 
-    invoice.currencySymbol = _extractCurrencySymbol(rawText);
-    invoice.invoiceNumber = _extractInvoiceNumber(rawText);
-    invoice.date = _extractDate(rawText);
-    invoice.ownerName = _extractBusinessName(rawText);
+    Map<String, dynamic> headerFields = {};
+    if (structuredData != null && structuredData['header_fields'] != null) {
+      headerFields = Map<String, dynamic>.from(structuredData['header_fields']);
+    }
+
+    invoice.invoiceNumber = _extractFromHeader(headerFields, 'invoice_number') ?? _extractInvoiceNumber(rawText);
+    invoice.date = _extractFromHeader(headerFields, 'date') ?? _extractDate(rawText);
+    invoice.total = _extractFromHeader(headerFields, 'total') ?? _extractTotal(rawText, null);
+    invoice.currencySymbol = _extractFromHeader(headerFields, 'currency') ?? _extractCurrencySymbol(rawText);
+    invoice.ownerName = _extractFromHeader(headerFields, 'business_name') ?? _extractBusinessName(rawText);
+    invoice.billToName = _extractFromHeader(headerFields, 'customer_name') ?? _extractBillToName(rawText);
+    
     invoice.ownerMobile = _extractMobile(rawText);
     invoice.ownerAddress = _extractSellerAddress(rawText);
     invoice.gstin = _extractGSTIN(rawText);
-    invoice.billToName = _extractBillToName(rawText);
     invoice.billToMobile = _extractMobile(rawText);
     invoice.billToAddress = '';
 
@@ -35,11 +42,27 @@ class InvoiceParser {
 
     invoice.subtotal = _extractSubtotal(rawText, invoice.currencySymbol);
     invoice.gstPercentage = _extractGSTPercentage(rawText);
-    invoice.total = _extractTotal(rawText, invoice.currencySymbol);
+    if (invoice.total == 0.0) {
+      invoice.total = _extractTotal(rawText, invoice.currencySymbol);
+    }
     invoice.authorizedSignature = _extractSignature(rawText);
     invoice.extraFields = _extractExtraFields(rawText);
 
     return invoice;
+  }
+
+  static dynamic _extractFromHeader(Map<String, dynamic> headerFields, String key) {
+    if (headerFields.containsKey(key) && headerFields[key] != null) {
+      var value = headerFields[key];
+      if (value is num) {
+        return value.toDouble();
+      }
+      String strVal = value.toString().trim();
+      if (strVal.isNotEmpty) {
+        return strVal;
+      }
+    }
+    return null;
   }
 
   static List<InvoiceTable> _parseStructuredTables(List<dynamic> tablesData) {
@@ -105,6 +128,7 @@ class InvoiceParser {
 
   static String _extractInvoiceNumber(String text) {
     var patterns = [
+      RegExp(r'Invoice\s*#\s*([A-Z0-9]+)', caseSensitive: false),
       RegExp(r'NO\.\s*([0-9]+)', caseSensitive: false),
       RegExp(r'NO[:\s]+([0-9]+)', caseSensitive: false),
       RegExp(
@@ -120,7 +144,6 @@ class InvoiceParser {
         caseSensitive: false,
       ),
       RegExp(r'\bINV-\s*([A-Z0-9\-]{2,15})\b', caseSensitive: false),
-      RegExp(r'#\s*([A-Z0-9][A-Z0-9\-]{1,15})\b'),
     ];
 
     for (var pattern in patterns) {
@@ -146,6 +169,7 @@ class InvoiceParser {
 
   static String _extractDate(String text) {
     var patterns = [
+      RegExp(r'Date[:\s]*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})', caseSensitive: false),
       RegExp(r'Invoice\s*Date[:\s]*([A-Za-z\s\d,]+)', caseSensitive: false),
       RegExp(r'Date[:\s]*([A-Za-z\s\d,]+)', caseSensitive: false),
       RegExp(r'(\d{1,2}\s+[A-Za-z]+\s+\d{4})', caseSensitive: false),
@@ -156,22 +180,47 @@ class InvoiceParser {
       var match = pattern.firstMatch(text);
       if (match != null) {
         String date = match.group(1)!.trim();
-        return date;
+        if (_isValidDate(date)) {
+          return date;
+        }
       }
     }
     return '';
   }
 
+  static bool _isValidDate(String date) {
+    if (date.isEmpty) return false;
+    
+    var mmddyyyy = RegExp(r'^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$');
+    var match = mmddyyyy.firstMatch(date);
+    if (match != null) {
+      int month = int.parse(match.group(1)!);
+      int day = int.parse(match.group(2)!);
+      int year = int.parse(match.group(3)!);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31 && year >= 1990 && year <= 2030) {
+        return true;
+      }
+    }
+    
+    List<String> months = ['january', 'february', 'march', 'april', 'may', 'june', 
+                           'july', 'august', 'september', 'october', 'november', 'december'];
+    var monthName = RegExp(r'([A-Za-z]+)\s+\d{1,2},?\s+\d{4}', caseSensitive: false);
+    var match2 = monthName.firstMatch(date);
+    if (match2 != null) {
+      String monthStr = match2.group(1)!.toLowerCase();
+      return months.any((m) => monthStr.contains(m));
+    }
+    
+    return false;
+  }
+
   static String _extractBusinessName(String text) {
     var patterns = [
+      RegExp(r'Your\s+Business\s+Name[:\s]*([A-Za-z][A-Za-z\s\-&.]+)', caseSensitive: false),
       RegExp(r'From:\s*\n?([^\n]+)', caseSensitive: false),
       RegExp(r'Seller:\s*([^\n]+)', caseSensitive: false),
       RegExp(r'Company:\s*([^\n]+)', caseSensitive: false),
       RegExp(r'Business\s*Name:\s*([^\n]+)', caseSensitive: false),
-      RegExp(
-        r'(?:\n|^)([A-Z][A-Za-z0-9\s&\-\.]{3,40})(?:$|\n)',
-        caseSensitive: false,
-      ),
     ];
 
     for (var pattern in patterns) {
@@ -280,6 +329,7 @@ class InvoiceParser {
 
   static String _extractBillToName(String text) {
     var patterns = [
+      RegExp(r'Invoiced?\s*To[:\s]*([A-Za-z][A-Za-z0-9\s\-&.]+)', caseSensitive: false),
       RegExp(
         r'Billed?\s*to:?\s*\n?([A-Za-z][A-Za-z0-9\s\-&.]+)',
         caseSensitive: false,
@@ -294,10 +344,6 @@ class InvoiceParser {
         caseSensitive: false,
       ),
       RegExp(r'Client:?\s*([A-Za-z][A-Za-z0-9\s\-&.]+)', caseSensitive: false),
-      RegExp(
-        r'Customer\s*Name:?\s*([A-Za-z][A-Za-z0-9\s\-&.]+)',
-        caseSensitive: false,
-      ),
     ];
 
     for (var pattern in patterns) {
@@ -596,7 +642,7 @@ class InvoiceParser {
 
   static double _extractSubtotal(String text, String? currencySymbol) {
     var patterns = [
-      RegExp(r'Sub\s*Total[:\s]*\$?([\d,]+\.?\d*)', caseSensitive: false),
+      RegExp(r'Sub\s*Total[:\s]*(?:USD|EUR|GBP|INR|\$|€|£|¥|₹)?\s*([\d,]+\.?\d*)', caseSensitive: false),
       RegExp(r'Sub\s*Total[:\s]*([\d,]+\.?\d*)', caseSensitive: false),
     ];
 
@@ -611,7 +657,7 @@ class InvoiceParser {
 
   static double _extractGSTPercentage(String text) {
     var patterns = [
-      RegExp(r'Tax[:\s]*\$?([\d,]+\.?\d*)', caseSensitive: false),
+      RegExp(r'Tax[:\s]*(?:USD|EUR|GBP|INR|\$|€|£|¥|₹)?\s*([\d,]+\.?\d*)', caseSensitive: false),
       RegExp(r'(\d+(?:\.\d+)?)\s*%', caseSensitive: false),
     ];
 
@@ -628,9 +674,11 @@ class InvoiceParser {
 
   static double _extractTotal(String text, String? currencySymbol) {
     var patterns = [
-      RegExp(r'Total\s*Due[:\s]*\$?([\d,]+\.?\d*)', caseSensitive: false),
-      RegExp(r'Grand\s*Total[:\s]*\$?([\d,]+\.?\d*)', caseSensitive: false),
+      RegExp(r'Total\s*Due[:\s]*(?:USD|EUR|GBP|INR|\$|€|£|¥|₹)?\s*([\d,]+\.?\d*)', caseSensitive: false),
+      RegExp(r'Grand\s*Total[:\s]*(?:USD|EUR|GBP|INR|\$|€|£|¥|₹)?\s*([\d,]+\.?\d*)', caseSensitive: false),
+      RegExp(r'Total[:\s]*(?:USD|EUR|GBP|INR|\$|€|£|¥|₹)\s*([\d,]+\.?\d*)', caseSensitive: false),
       RegExp(r'Total[:\s]*\$?([\d,]+\.?\d*)', caseSensitive: false),
+      RegExp(r'(?:USD|EUR|GBP|INR)\s*\$\s*([\d,]+\.?\d*)', caseSensitive: false),
     ];
 
     for (var pattern in patterns) {

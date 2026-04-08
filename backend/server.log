@@ -1,0 +1,19 @@
+INFO:     Will watch for changes in these directories: ['/Users/tekkalidileep/MTouch_clone/Invoice-text-extractor/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [29887] using StatReload
+INFO:     Started server process [29889]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:60219 - "GET /health HTTP/1.1" 200 OK
+Processing file: 157387 (1).pdf, size: 47698 bytes
+INFO:     127.0.0.1:60523 - "POST /upload HTTP/1.1" 200 OK
+Processing file: INV-002 (1).pdf, size: 148586 bytes
+INFO:     127.0.0.1:60736 - "POST /upload HTTP/1.1" 200 OK
+Processing file: INV-003.pdf, size: 1530070 bytes
+INFO:     127.0.0.1:60949 - "POST /upload HTTP/1.1" 200 OK
+Processing file: JS_React_Fresher_Questions.pdf, size: 6618 bytes
+INFO:     127.0.0.1:62174 - "POST /upload HTTP/1.1" 200 OK
+Processing file: Downloadable-PDF-Invoices-Add-On-Samples.pdf, size: 475112 bytes
+INFO:     127.0.0.1:65032 - "POST /upload HTTP/1.1" 200 OK
+Processing file: INV-001.pdf, size: 309369 bytes
+INFO:     127.0.0.1:65308 - "POST /upload HTTP/1.1" 200 OK
