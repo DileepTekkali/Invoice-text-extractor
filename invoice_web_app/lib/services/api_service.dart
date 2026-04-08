@@ -28,7 +28,8 @@ class ApiResponse {
 }
 
 class ApiService {
-  static const String baseUrl = "http://localhost:8000";
+  static const String baseUrl =
+      "https://invoice-text-extractor-e3q8.onrender.com";
 
   static Future<ApiResponse> uploadFile(
     List<int> bytes,
