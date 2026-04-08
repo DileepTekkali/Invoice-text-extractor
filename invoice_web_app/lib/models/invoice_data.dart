@@ -66,6 +66,34 @@ class InvoiceData {
     this.discount = 0.0,
   });
 
+  static double _toDouble(dynamic val) {
+    if (val == null) return 0.0;
+    if (val is double) return val;
+    if (val is int) return val.toDouble();
+    if (val is String) {
+      try {
+        return double.parse(val.replaceAll(',', ''));
+      } catch (_) {
+        return 0.0;
+      }
+    }
+    return 0.0;
+  }
+
+  static int _toInt(dynamic val) {
+    if (val == null) return 0;
+    if (val is int) return val;
+    if (val is double) return val.toInt();
+    if (val is String) {
+      try {
+        return int.parse(val.replaceAll(',', '').split('.')[0]);
+      } catch (_) {
+        return 0;
+      }
+    }
+    return 0;
+  }
+
   factory InvoiceData.fromJson(Map<String, dynamic> json) {
     final seller = json['seller'] as Map<String, dynamic>? ?? {};
     final customer = json['customer'] as Map<String, dynamic>? ?? {};
@@ -76,27 +104,29 @@ class InvoiceData {
     final taxBreakdown = json['tax_breakdown'] as Map<String, dynamic>? ?? {};
 
     List<InvoiceItem> items = [];
-    if (json['line_items'] != null) {
+    if (json['line_items'] != null && json['line_items'] is List) {
       items = (json['line_items'] as List)
+          .where((item) => item is Map<String, dynamic>)
           .map((item) => InvoiceItem.fromJson(item as Map<String, dynamic>))
           .toList();
     }
 
     List<InvoiceTable> tables = [];
-    if (json['tables'] != null) {
+    if (json['tables'] != null && json['tables'] is List) {
       tables = (json['tables'] as List)
+          .where((table) => table is Map<String, dynamic>)
           .map((table) => InvoiceTable.fromJson(table as Map<String, dynamic>))
           .toList();
     }
 
-    double subtotalVal = (json['subtotal'] as num?)?.toDouble() ?? 0.0;
+    double subtotalVal = _toDouble(json['subtotal']);
 
     double gstPercentage = 0.0;
     if (json['gst_percentage'] != null) {
-      gstPercentage = (json['gst_percentage'] as num).toDouble();
+      gstPercentage = _toDouble(json['gst_percentage']);
     } else if (taxBreakdown['cgst'] != null && subtotalVal > 0) {
-      final cgst = (taxBreakdown['cgst'] as num?)?.toDouble() ?? 0;
-      final sgst = (taxBreakdown['sgst'] as num?)?.toDouble() ?? 0;
+      final cgst = _toDouble(taxBreakdown['cgst']);
+      final sgst = _toDouble(taxBreakdown['sgst']);
       gstPercentage = ((cgst + sgst) / subtotalVal) * 100;
     }
 
@@ -126,10 +156,9 @@ class InvoiceData {
       tableHeaders: tables.isNotEmpty ? tables.first.headers : [],
       subtotal: subtotalVal,
       gstPercentage: gstPercentage,
-      total:
-          (json['total_amount'] as num?)?.toDouble() ??
-          (json['total'] as num?)?.toDouble() ??
-          0.0,
+      total: _toDouble(json['total_amount']) > 0
+          ? _toDouble(json['total_amount'])
+          : _toDouble(json['total']),
       currencySymbol: json['currency']?.toString() ?? '₹',
       authorizedSignature: json['authorized_signature']?.toString(),
       rawText: json['raw_text']?.toString() ?? '',
@@ -143,9 +172,9 @@ class InvoiceData {
       additionalDetails: additionalDetails,
       dueDate: json['due_date']?.toString(),
       status: json['status']?.toString(),
-      tax: (json['tax'] as num?)?.toDouble() ?? 0.0,
+      tax: _toDouble(json['tax']),
       taxBreakdown: taxBreakdown,
-      discount: (json['discount'] as num?)?.toDouble() ?? 0.0,
+      discount: _toDouble(json['discount']),
     );
   }
 
@@ -196,15 +225,43 @@ class InvoiceItem {
     this.itemNumber,
   });
 
+  static double _toDouble(dynamic val) {
+    if (val == null) return 0.0;
+    if (val is double) return val;
+    if (val is int) return val.toDouble();
+    if (val is String) {
+      try {
+        return double.parse(val.replaceAll(',', ''));
+      } catch (_) {
+        return 0.0;
+      }
+    }
+    return 0.0;
+  }
+
+  static int _toInt(dynamic val) {
+    if (val == null) return 0;
+    if (val is int) return val;
+    if (val is double) return val.toInt();
+    if (val is String) {
+      try {
+        return int.parse(val.replaceAll(',', '').split('.')[0]);
+      } catch (_) {
+        return 0;
+      }
+    }
+    return 0;
+  }
+
   factory InvoiceItem.fromJson(Map<String, dynamic> json) {
     return InvoiceItem(
       description: json['description']?.toString() ?? '',
-      quantity: (json['quantity'] as num?)?.toInt() ?? 0,
-      rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
-      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      quantity: _toInt(json['quantity']),
+      rate: _toDouble(json['rate']),
+      amount: _toDouble(json['amount']),
       unit: json['unit']?.toString(),
       hsnSac: json['hsn_sac']?.toString(),
-      taxRate: (json['tax_rate'] as num?)?.toDouble(),
+      taxRate: json['tax_rate'] != null ? _toDouble(json['tax_rate']) : null,
       itemNumber: json['item_number']?.toString(),
     );
   }
@@ -234,10 +291,10 @@ class InvoiceTable {
 
   factory InvoiceTable.fromJson(Map<String, dynamic> json) {
     List<List<String>> rows = [];
-    if (json['rows'] != null) {
+    if (json['rows'] != null && json['rows'] is List) {
       rows = (json['rows'] as List).map((row) {
         if (row is List) {
-          return row.map((cell) => cell.toString()).toList();
+          return row.map((cell) => cell?.toString() ?? '').toList();
         }
         return <String>[];
       }).toList();
@@ -245,8 +302,8 @@ class InvoiceTable {
 
     return InvoiceTable(
       title: json['title']?.toString() ?? json['table_name']?.toString() ?? '',
-      headers: json['headers'] != null
-          ? (json['headers'] as List).map((h) => h.toString()).toList()
+      headers: json['headers'] != null && json['headers'] is List
+          ? (json['headers'] as List).map((h) => h?.toString() ?? '').toList()
           : [],
       rows: rows,
     );

@@ -3,6 +3,19 @@ from datetime import datetime
 from .database import get_invoices_collection
 import json
 
+def _to_float(val):
+    if val is None:
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        val = val.strip()
+        try:
+            return float(val.replace(',', ''))
+        except:
+            return 0.0
+    return 0.0
+
 def serialize_invoice(invoice):
     if invoice is None:
         return None
@@ -13,36 +26,90 @@ def serialize_invoice(invoice):
         invoice["updated_at"] = invoice["updated_at"].isoformat()
     return invoice
 
+def convert_to_serializable(obj, seen=None):
+    if seen is None:
+        seen = set()
+    
+    obj_id = id(obj)
+    if obj_id in seen:
+        return None
+    seen.add(obj_id)
+    
+    try:
+        if isinstance(obj, dict):
+            return {str(k): convert_to_serializable(v, seen) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_to_serializable(item, seen) for item in obj]
+        elif isinstance(obj, (str, int, float, bool, type(None))):
+            return obj
+        else:
+            return str(obj)
+    finally:
+        seen.discard(obj_id)
+
 def create_invoice(invoice_data):
     collection = get_invoices_collection()
     
+    def _safe_str(val):
+        if val is None:
+            return ""
+        if isinstance(val, str):
+            return val.strip()
+        return str(val)
+    
+    def _safe_float(val):
+        if val is None:
+            return 0.0
+        if isinstance(val, (int, float)):
+            return float(val)
+        if isinstance(val, str):
+            val = val.strip()
+            try:
+                return float(val.replace(',', ''))
+            except:
+                return 0.0
+        return 0.0
+    
+    def _safe_dict(val):
+        if val is None:
+            return {}
+        if isinstance(val, dict):
+            return convert_to_serializable(val)
+        return {}
+    
+    def _safe_list(val):
+        if val is None:
+            return []
+        if isinstance(val, list):
+            return convert_to_serializable(val)
+        return []
+    
     document = {
-        "invoice_number": invoice_data.get("invoice_number", ""),
-        "date": invoice_data.get("date", ""),
-        "due_date": invoice_data.get("due_date"),
-        "status": invoice_data.get("status"),
-        "currency": invoice_data.get("currency", "INR"),
+        "invoice_number": _safe_str(invoice_data.get("invoice_number")),
+        "date": _safe_str(invoice_data.get("date")),
+        "due_date": _safe_str(invoice_data.get("due_date")) or None,
+        "status": _safe_str(invoice_data.get("status")) or None,
+        "currency": _safe_str(invoice_data.get("currency")) or "INR",
         
-        "seller": invoice_data.get("seller", {}),
-        "customer": invoice_data.get("customer", {}),
-        "payment_info": invoice_data.get("payment_info", {}),
+        "seller": _safe_dict(invoice_data.get("seller")),
+        "customer": _safe_dict(invoice_data.get("customer")),
+        "payment_info": _safe_dict(invoice_data.get("payment_info")),
         
-        "line_items": invoice_data.get("line_items", []),
-        "tables": invoice_data.get("tables", []),
+        "line_items": _safe_list(invoice_data.get("line_items")),
+        "tables": _safe_list(invoice_data.get("tables")),
         
-        "subtotal": invoice_data.get("subtotal", 0),
-        "tax": invoice_data.get("tax", 0),
-        "tax_breakdown": invoice_data.get("tax_breakdown", {}),
-        "discount": invoice_data.get("discount", 0),
-        "total_amount": invoice_data.get("total_amount", 0),
+        "subtotal": _safe_float(invoice_data.get("subtotal")),
+        "tax": _safe_float(invoice_data.get("tax")),
+        "tax_breakdown": _safe_dict(invoice_data.get("tax_breakdown")),
+        "discount": _safe_float(invoice_data.get("discount")),
+        "total_amount": _safe_float(invoice_data.get("total_amount")),
         
-        "additional_details": invoice_data.get("additional_details", {}),
-        "extra_fields": invoice_data.get("extra_fields", {}),
+        "additional_details": _safe_dict(invoice_data.get("additional_details")),
+        "extra_fields": _safe_dict(invoice_data.get("extra_fields")),
         
-        "raw_text": invoice_data.get("raw_text", ""),
-        "filename": invoice_data.get("filename", ""),
-        "structured_data": invoice_data.get("structured_data", {}),
-        "extraction_method": invoice_data.get("extraction_method", ""),
+        "raw_text": _safe_str(invoice_data.get("raw_text"))[:50000],
+        "filename": _safe_str(invoice_data.get("filename")),
+        "extraction_method": _safe_str(invoice_data.get("extraction_method")),
         
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()

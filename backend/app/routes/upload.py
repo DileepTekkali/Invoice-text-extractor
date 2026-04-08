@@ -40,7 +40,6 @@ async def upload_invoice(file: UploadFile = File(...)):
             invoice_data = invoices[0]
             invoice_data["filename"] = filename
             invoice_data["raw_text"] = full_text
-            invoice_data["structured_data"] = structured_data
             invoice_data["extraction_method"] = extraction_method
             invoice_data["line_items"] = invoice_data.get("line_items", [])
             invoice_data["tables"] = structured_data.get("tables", [])
